@@ -50,7 +50,7 @@ class TickerClient(cbpro.WebsocketClient):
 
             # Update list of samples and get rolling average volume and price
             ts = int(dateutil.parser.parse(msg["time"]).timestamp() * 1000)
-            self.samples.append([ ts, float(msg["last_size"]), float(msg["price"]) ]) # tuple of time, volume, price
+            self.samples.append([ ts, float(msg["price"]) ]) # tuple of time, volume, price
 
             # print([ ts, float(msg["last_size"]), float(msg["price"]) ])
 
@@ -60,14 +60,9 @@ class TickerClient(cbpro.WebsocketClient):
 
             # print(len(self.samples))
 
-            avg_volume = 0
             avg_price = 0
-
             for e in self.samples:
-                avg_volume += e[1]
-                avg_price += e[2]
-
-            self.exchange.avg_volume = avg_volume / len(self.samples)
+                avg_price += e[1]
             self.exchange.avg_price = avg_price / len(self.samples)
 
             asyncio.run(self.on_message_async(msg))
@@ -85,11 +80,9 @@ class TickerClient(cbpro.WebsocketClient):
         elif msg["type"] == "match":
             try:
                 self.exchange.maker_fee_rate = float(msg["maker_fee_rate"])
+                asyncio.run(self.on_fill_async(msg))
             except KeyError:
-                self.exchange.log_warn("We were not the maker (check post-only or potentially GUI manual order?)")
-
-            asyncio.run(self.on_fill_async(msg))
-
+                self.exchange.log_warn("We were not the maker (GUI manual order or rebalance order?)")
 
     async def on_fill_async(self, msg):
         # Kick off on fill tasks
@@ -148,6 +141,7 @@ class Exchange:
 
         self.get_accounts()
         self.add_rest_tokens()
+        self.order_watchdog()
 
 
     def __del__(self):
@@ -201,4 +195,22 @@ class Exchange:
             self.log_info("tokens : {}".format(self.rest_tokens))
 
         self.loop.call_later(0.2, self.add_rest_tokens)
+
+    # Periodically list our open order to see if we have 0 or >1 orders open and act accordingly
+    def order_watchdog(self):
+        if self.rest_tokens >= 2:
+            orders_gen = self.rest_client.get_orders()
+            orders = list(orders_gen)
+
+            self.rest_tokens -= 2
+
+            # Kick off on order watchdog tasks
+            self.buyer.on_order_watchdog( [ e for e in orders if e["side"] == "buy"] )
+            self.seller.on_order_watchdog( [ e for e in orders if e["side"] == "sell"] )
+
+            self.loop.call_later(10.0, self.order_watchdog)
+        else:
+            # If no tokens are availible wait 3 seconds and try again
+            self.loop.call_later(3.0, self.order_watchdog)
+        
 

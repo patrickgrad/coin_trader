@@ -96,11 +96,19 @@ class Logger:
         buyer = {}
         buyer["alpha"] = self.buyer.alpha
         buyer["last_alpha_update"] = self.buyer.last_alpha_update
+        try:
+            buyer["last_trade_ms"] = self.buyer.last_trade_ms
+        except:
+            pass
         save_data["buyer"] = buyer
 
         seller = {}
         seller["alpha"] = self.seller.alpha
         seller["last_alpha_update"] = self.seller.last_alpha_update
+        try:
+            seller["last_trade_ms"] = self.seller.last_trade_ms
+        except:
+            pass
         save_data["seller"] = seller
 
         with open(pth.join(self.log_folder, fn), 'wb') as cfg:
@@ -123,10 +131,18 @@ class Logger:
         buyer = save_data["buyer"]
         self.buyer.alpha = buyer["alpha"]
         self.buyer.last_alpha_update = buyer["last_alpha_update"]
+        try:
+            self.buyer.last_trade_ms = buyer["last_trade_ms"]
+        except:
+            pass
 
         seller = save_data["seller"]
         self.seller.alpha = seller["alpha"]
         self.seller.last_alpha_update = seller["last_alpha_update"]
+        try:
+            self.seller.last_trade_ms = seller["last_trade_ms"]
+        except:
+            pass
 
     def exception_handler(self, loop, context):
         self.log_error("Main", "Exception handler called in asyncio")
