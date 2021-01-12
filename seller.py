@@ -154,7 +154,6 @@ class Seller:
                 self.log_error("order failed for unknown reason")
                 self.log_error(resp)
 
-
     async def on_fill(self, msg):
         self.log_info("fill {} {} {} {}".format(msg["size"], msg["price"], msg["side"], msg["maker_fee_rate"]))
 
@@ -162,7 +161,7 @@ class Seller:
         self.outstanding_order_vol -= float(msg["size"])
 
         # Increse alpha by on each fill
-        self.alpha *= 1.014
+        self.alpha *= 1.0075
         self.last_alpha_update = time.time_ns()*(10**-6)
 
         # If we have been trading too much, increse alpha

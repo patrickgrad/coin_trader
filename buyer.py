@@ -161,7 +161,7 @@ class Buyer:
         self.outstanding_order_vol -= float(msg["size"])
 
         # Increse alpha on each fill
-        self.alpha *= 1.014
+        self.alpha *= 1.0075
         self.last_alpha_update = time.time_ns()*(10**-6)
 
         # If we have been trading too much, increse alpha
