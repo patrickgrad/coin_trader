@@ -91,7 +91,7 @@ class Logger:
             save_data["hold_btc"] = self.exchange.hold_btc
             save_data["balance_btc"] = self.exchange.balance_btc
         except AttributeError:
-            self.log_info("Save, no wallet data")
+            self.log_info("Logger", "Save, no wallet data")
 
         buyer = {}
         buyer["alpha"] = self.buyer.alpha
@@ -126,7 +126,7 @@ class Logger:
             self.exchange.hold_btc = save_data["hold_btc"]
             self.exchange.balance_btc = save_data["balance_btc"]
         except AttributeError:
-            self.log_info("Restore, no wallet data")
+            self.log_info("Logger", "Restore, no wallet data")
 
         buyer = save_data["buyer"]
         self.buyer.alpha = buyer["alpha"]
@@ -145,9 +145,12 @@ class Logger:
             pass
 
     def exception_handler(self, loop, context):
+        self.exchange.close()
+        self.loop.stop()
+        
         self.log_error("Main", "Exception handler called in asyncio")
-        self.log_error("Main", context)
-        sys.exit("Exception handler called in asyncio")
+        self.log_error("Main", context["message"])
+        self.log_error("Main", context["exception"])
 
 
 

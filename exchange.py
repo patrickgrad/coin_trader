@@ -142,6 +142,7 @@ class Exchange:
         self.get_accounts()
         self.add_rest_tokens()
         self.order_watchdog()
+        self.exception_watchdog()
 
 
     def __del__(self):
@@ -212,5 +213,15 @@ class Exchange:
         else:
             # If no tokens are availible wait 3 seconds and try again
             self.loop.call_later(3.0, self.order_watchdog)
+
+    # Periodically check that we haven't hit an unhandled exception
+    def exception_watchdog(self):
+        if self.seller.unhandled_exception or self.buyer.unhandled_exception:
+            self.close()
+            self.loop.stop()
+        # No exceptions, continue as usual
+        else:
+            self.loop.call_later(1.0, self.exception_watchdog)
+            
         
 

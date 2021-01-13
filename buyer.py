@@ -28,6 +28,8 @@ class Buyer:
         self.outstanding_order_vol = 0
         self.last_alpha_update = time.time_ns()*(10**-6)
 
+        self.unhandled_exception = False
+
     def __del__(self):
         pass          
 
@@ -45,61 +47,67 @@ class Buyer:
         self.logger.log_info("Buyer", msg)
 
     async def on_tick(self, msg):
-        alpha_updated = False
         try:
-            # If we haven't been trading, lower alpha
-            time_since_last_update = time.time_ns()*(10**-6) - self.last_alpha_update
+            alpha_updated = False
             try:
-                time_since_last_trade = time.time_ns()*(10**-6) - self.last_trade_ms
-                if time_since_last_update >= LONG_TIME_MS and time_since_last_trade >= LONG_TIME_MS:
-                    self.alpha /= 1.25
-                    self.last_alpha_update = time.time_ns()*(10**-6)
-                    alpha_updated = True
-            except AttributeError:
-                if time_since_last_update >= LONG_TIME_MS:
-                    self.alpha /= 1.25
-                    self.last_alpha_update = time.time_ns()*(10**-6)   
-                    alpha_updated = True
+                # If we haven't been trading, lower alpha
+                time_since_last_update = time.time_ns()*(10**-6) - self.last_alpha_update
+                try:
+                    time_since_last_trade = time.time_ns()*(10**-6) - self.last_trade_ms
+                    if time_since_last_update >= LONG_TIME_MS and time_since_last_trade >= LONG_TIME_MS:
+                        self.alpha /= 1.25
+                        self.last_alpha_update = time.time_ns()*(10**-6)
+                        alpha_updated = True
+                except AttributeError:
+                    if time_since_last_update >= LONG_TIME_MS:
+                        self.alpha /= 1.25
+                        self.last_alpha_update = time.time_ns()*(10**-6)   
+                        alpha_updated = True
 
-            size_target = max(min(volume_fn(self.exchange.balance_usd, self.exchange.balance_btc, self.exchange.avg_price), self.exchange.available_usd/self.our_bid), self.exchange.product["base_min_size"])
-            price_threshold = abs( self.our_price - self.exchange.avg_price ) / self.our_price >= P_DIFF_THRESH
-            
-            try:
-                size_threshold = abs( self.outstanding_order_vol - size_target) / self.outstanding_order_vol >= V_DIFF_THRESH
-            # If outstanding order volume is 0, then order was filled and we need to put a new one on
-            except ZeroDivisionError:
-                size_threshold = True
-
-            # Check if we haven't placed an order yet
-            if abs(self.outstanding_order_vol) < 10**-8:
-                # Need 1 token to do this operation, if we don't have it abort
-                if self.exchange.rest_tokens >= 1:
-                    self.place_order(msg)
-
-                    self.log_info("new {} {}".format(self.alpha, time_since_last_update))
+                size_target = max(min(volume_fn(self.exchange.balance_usd, self.exchange.balance_btc, self.exchange.avg_price), self.exchange.available_usd/self.our_bid), self.exchange.product["base_min_size"])
+                price_threshold = abs( self.our_price - self.exchange.avg_price ) / self.our_price >= P_DIFF_THRESH
                 
-            # Check if we need to update our order
-            elif alpha_updated or price_threshold or size_threshold:
-                # Need 2 tokens to do this operation, if we don't have it abort
-                if self.exchange.rest_tokens >= 2:
+                try:
+                    size_threshold = abs( self.outstanding_order_vol - size_target) / self.outstanding_order_vol >= V_DIFF_THRESH
+                # If outstanding order volume is 0, then order was filled and we need to put a new one on
+                except ZeroDivisionError:
+                    size_threshold = True
 
-                    # Cancel previous order
-                    resp = self.exchange.rest_client.cancel_order(self.open_order_id)
-                    #TODO : need to update wallet when we cancel the order
-                    self.exchange.rest_tokens -= 1
+                # Check if we haven't placed an order yet
+                if abs(self.outstanding_order_vol) < 10**-8:
+                    # Need 1 token to do this operation, if we don't have it abort
+                    if self.exchange.rest_tokens >= 1:
+                        self.place_order(msg)
 
-                    self.place_order(msg)
+                        self.log_info("new {} {}".format(self.alpha, time_since_last_update))
+                    
+                # Check if we need to update our order
+                elif alpha_updated or price_threshold or size_threshold:
+                    # Need 2 tokens to do this operation, if we don't have it abort
+                    if self.exchange.rest_tokens >= 2:
 
-                    self.log_info("replace {} {}".format(self.alpha, time_since_last_update))
+                        # Cancel previous order
+                        resp = self.exchange.rest_client.cancel_order(self.open_order_id)
+                        #TODO : need to update wallet when we cancel the order
+                        self.exchange.rest_tokens -= 1
 
-            else:
-                self.log_info("noop {} {}".format(self.alpha, time_since_last_update))
-        except AttributeError:
-            self.log_info("data structures not ready yet")
-            self.our_price = -1
-            self.our_bid = -1
-            self.open_order_id = ""
-            self.outstanding_order_vol = 0
+                        self.place_order(msg)
+
+                        self.log_info("replace {} {}".format(self.alpha, time_since_last_update))
+
+                else:
+                    self.log_info("noop {} {}".format(self.alpha, time_since_last_update))
+            except AttributeError:
+                self.log_info("data structures not ready yet")
+                self.our_price = -1
+                self.our_bid = -1
+                self.open_order_id = ""
+                self.outstanding_order_vol = 0
+                
+        except:
+            self.log_error("Unhandled exception!!!")
+            self.log_error(traceback.format_exc())
+            self.unhandled_exception = True
 
     def place_order(self, msg):
         # Send new order 
@@ -155,39 +163,45 @@ class Buyer:
                 
 
     async def on_fill(self, msg):
-        self.log_info("fill {} {} {} {}".format(msg["size"], msg["price"], msg["side"], msg["maker_fee_rate"]))
-
-        # Decrease the outstanding_order_vol
-        self.outstanding_order_vol -= float(msg["size"])
-
-        # Increse alpha on each fill
-        self.alpha *= 1.0075
-        self.last_alpha_update = time.time_ns()*(10**-6)
-
-        # If we have been trading too much, increse alpha
         try:
-            # Only count as a trade when we fill the whole order
-            if abs(self.outstanding_order_vol) < 10**-8:
-                time_since_last_trade = time.time_ns()*(10**-6) - self.last_trade_ms
+            self.log_info("fill {} {} {} {}".format(msg["size"], msg["price"], msg["side"], msg["maker_fee_rate"]))
 
-                if time_since_last_trade <= SHORT_TIME_MS:
-                    self.alpha *= 5
+            # Decrease the outstanding_order_vol
+            self.outstanding_order_vol -= float(msg["size"])
 
-                if self.alpha > 50:
-                    self.alpha = 50
-        except AttributeError:
-            self.log_info("first trade, can't update alpha yet")
+            # Increse alpha on each fill
+            self.alpha *= 1.0075
+            self.last_alpha_update = time.time_ns()*(10**-6)
 
-        # Update time of last trade
-        self.last_trade_ms = time.time_ns()*(10**-6)
+            # If we have been trading too much, increse alpha
+            try:
+                # Only count as a trade when we fill the whole order
+                if abs(self.outstanding_order_vol) < 10**-8:
+                    time_since_last_trade = time.time_ns()*(10**-6) - self.last_trade_ms
 
-        # Adjust wallet stats now (fee comes out of USD)
-        self.exchange.hold_usd -= float(msg["size"]) * float(msg["price"])
-        self.exchange.available_usd -= self.exchange.maker_fee_rate * ( float(msg["size"]) * float(msg["price"]) )
-        self.exchange.available_btc += float(msg["size"])
+                    if time_since_last_trade <= SHORT_TIME_MS:
+                        self.alpha *= 5
 
-        self.exchange.balance_usd = self.exchange.hold_usd + self.exchange.available_usd
-        self.exchange.balance_btc = self.exchange.hold_btc + self.exchange.available_btc
+                    if self.alpha > 50:
+                        self.alpha = 50
+            except AttributeError:
+                self.log_info("first trade, can't update alpha yet")
+
+            # Update time of last trade
+            self.last_trade_ms = time.time_ns()*(10**-6)
+
+            # Adjust wallet stats now (fee comes out of USD)
+            self.exchange.hold_usd -= float(msg["size"]) * float(msg["price"])
+            self.exchange.available_usd -= self.exchange.maker_fee_rate * ( float(msg["size"]) * float(msg["price"]) )
+            self.exchange.available_btc += float(msg["size"])
+
+            self.exchange.balance_usd = self.exchange.hold_usd + self.exchange.available_usd
+            self.exchange.balance_btc = self.exchange.hold_btc + self.exchange.available_btc
+
+        except:
+            self.log_error("Unhandled exception!!!")
+            self.log_error(traceback.format_exc())
+            self.unhandled_exception = True
 
     def on_order_watchdog(self, orders):
         # Order got filled or closed and we missed it

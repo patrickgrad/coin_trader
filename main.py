@@ -6,6 +6,7 @@ import seller as s
 import logger as l
 import pickle as pkl
 import sys
+import signal
 
 if __name__ == "__main__":
     loop = asyncio.new_event_loop()
@@ -24,8 +25,13 @@ if __name__ == "__main__":
         loop.run_forever()
     except KeyboardInterrupt:
         logger.make_checkpoint("end_chk.pkl")
-        loop.close()
         exchange.close()
+        loop.close()
         logger.log_info("Main", "Interrupted!")
+        sys.exit(0)
+
+    loop.close()
+    logger.log_error("Main", "Crashed!")
+    sys.exit(1)
 
     
