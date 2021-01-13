@@ -35,6 +35,11 @@ class TickerClient(cbpro.WebsocketClient):
         
         self.logger.log_info("TickerClient", "-- Match Socket Opened --")
 
+    def on_error(self, e, data=None):
+        self.error = e
+        self.stop = True
+        self.logger.log_error("TickerClient", "{} - data: {}".format(e, data))
+
     def on_message(self, msg):
 
         if msg["type"] == "ticker":
@@ -216,7 +221,7 @@ class Exchange:
 
     # Periodically check that we haven't hit an unhandled exception
     def exception_watchdog(self):
-        if self.seller.unhandled_exception or self.buyer.unhandled_exception:
+        if self.seller.unhandled_exception or self.buyer.unhandled_exception or self.ws_tickers.stop:
             self.close()
             self.loop.stop()
         # No exceptions, continue as usual
