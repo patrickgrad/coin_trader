@@ -3,6 +3,8 @@ import os.path as pth
 import sys
 from datetime import datetime
 import pickle as pkl
+import subprocess as subp
+import shutil
 
 LOG_ERROR = 1
 LOG_WARN  = 2
@@ -62,6 +64,7 @@ class Logger:
         # Make data structure checkpoint before switching log folder
         self.make_checkpoint("end_chk.pkl")
 
+        old_log_folder = self.log_folder.copy()
         self.log_folder = pth.join(os.getcwd(), "logs_{}".format(datetime.now().strftime("%Y%m%d_%H%M%S")))
         self.info_path = pth.join(self.log_folder, "info.log")
         self.warn_path = pth.join(self.log_folder, "warn.log")
@@ -77,6 +80,13 @@ class Logger:
 
         # Make a checkpoint when we start the new log folder
         self.make_checkpoint("start_chk.pkl")
+
+        # Compress old log folder and delete logs
+        old_log_compressed = "{}.tar.gz".format(old_log_folder)
+        subp.run(["tar", "cvzf", old_log_compressed, old_log_folder])
+        subp.run(["uplink", "cp", old_log_compressed, "sj://logs"])
+        os.remove(old_log_compressed)
+        shutil.rmtree(old_log_folder)
 
         self.loop.call_later(15 * 60, self.new_log_folder)
 
@@ -151,6 +161,12 @@ class Logger:
         self.log_error("Main", "Exception handler called in asyncio")
         self.log_error("Main", context["message"])
         self.log_error("Main", context["exception"])
+
+
+
+
+# 
+# subp.call(["tar", "xzcf"], shell=True)
 
 
 
