@@ -5,10 +5,14 @@ import time
 import collections as col
 import dateutil.parser
 import inspect
+import os
 
 def lineno():
     """Returns the current line number in our program."""
     return inspect.currentframe().f_back.f_lineno
+
+async def noop():
+    return
 
 LOG_ERROR = 1
 LOG_WARN  = 2
@@ -17,19 +21,16 @@ LOG_OFF   = 4
 
 TICK_LOOKBACK_TIME = (15 * 1000)
 
-async def noop():
-    return
-
 class TickerClient(cbpro.WebsocketClient):
     def on_open(self):
-        self.url =  "wss://ws-feed-public.sandbox.pro.coinbase.com" # "wss://ws-feed.pro.coinbase.com/"
+        self.url =  self.exchange.ws_url
         self.products = ["BTC-USD"]
         self.channels = ["ticker", "status", "user"]
 
         self.auth = True
-        self.api_key = "29ac1db14d0842c65b6a0af7d4db2a4f"
-        self.api_secret = "eGw/OKZeUIWKbrT4ehDN3gkPMFJqHavuEDT8D/QQ2Si/pXB/olKUcExnQ0SwhlSMVmA4JIxZZi2ScWEsX4NDXg=="
-        self.api_passphrase = "afm8rcw81x"
+        self.api_key = self.exchange.api_key
+        self.api_secret = self.exchange.api_secret
+        self.api_passphrase = self.exchange.api_passphrase
 
         self.samples = col.deque()
         
@@ -119,7 +120,13 @@ class TickerClient(cbpro.WebsocketClient):
 
 class Exchange:
     def __init__(self, loop, logger, buyer, seller):
-        self.rest_client = cbpro.AuthenticatedClient("29ac1db14d0842c65b6a0af7d4db2a4f", "eGw/OKZeUIWKbrT4ehDN3gkPMFJqHavuEDT8D/QQ2Si/pXB/olKUcExnQ0SwhlSMVmA4JIxZZi2ScWEsX4NDXg==", "afm8rcw81x", api_url="https://api-public.sandbox.pro.coinbase.com")
+        self.api_key = self.get_system_variable("KEY")
+        self.api_secret = self.get_system_variable("B64SECRET")
+        self.api_passphrase = self.get_system_variable("PASSPHRASE")
+        self.rest_url = self.get_system_variable("REST_URL")
+        self.ws_url = self.get_system_variable("WS_URL")
+
+        self.rest_client = cbpro.AuthenticatedClient(self.api_key, self.api_secret, self.api_passphrase, api_url=self.rest_url)
         self.rest_client.cancel_all()
         self.rest_tokens = 0                
         self.ws_tickers = TickerClient()
@@ -165,6 +172,18 @@ class Exchange:
 
     def log_info(self, msg):
         self.logger.log_info("Exchange", msg)
+
+    def get_system_variable(self, name):
+        try:
+            return os.environ[name]
+        except KeyError:
+            self.log_warn('"{}" does not exist!'.format(name))
+            val = input("{}:".format(name))
+
+            # Set system variable so we don't have to do this again
+            os.environ[name] = val
+
+            return val
 
     # Every 2 seconds we need to get the balance of our funds
     def get_accounts(self):

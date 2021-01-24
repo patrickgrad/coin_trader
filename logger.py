@@ -90,7 +90,7 @@ class Logger:
         with open(old_log_compressed, "rb") as f:
             cksum = hashlib.sha256(f.read()).hexdigest()
         
-        subp.run(["uplink", "cp", "--metadata", '{"cksum":"{}"}'.format(cksum), old_log_compressed, "sj://logs"])
+        subp.run(["uplink", "cp", "--metadata", '{\"cksum\":\"'+cksum+'\"}', old_log_compressed, "sj://logs"])
         os.remove(old_log_compressed)
         shutil.rmtree(old_log_folder)
 
@@ -168,12 +168,3 @@ class Logger:
         self.log_error("Main", context["message"])
         self.log_error("Main", context["exception"])
 
-
-
-
-# 
-# subp.call(["tar", "xzcf"], shell=True)
-
-
-
-        
