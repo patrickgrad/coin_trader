@@ -6,6 +6,7 @@ import pickle as pkl
 import subprocess as subp
 import shutil
 import copy
+import hashlib
 
 LOG_ERROR = 1
 LOG_WARN  = 2
@@ -85,7 +86,11 @@ class Logger:
         # Compress old log folder and delete logs
         old_log_compressed = "{}.tar.gz".format(old_log_folder)
         subp.run(["tar", "cvzf", old_log_compressed, old_log_folder])
-        subp.run(["uplink", "cp", old_log_compressed, "sj://logs"])
+
+        with open(old_log_compressed, "rb") as f:
+            cksum = hashlib.sha256(f.read()).hexdigest()
+        
+        subp.run(["uplink", "cp", "--metadata", '{"cksum":"{}"}'.format(cksum), old_log_compressed, "sj://logs"])
         os.remove(old_log_compressed)
         shutil.rmtree(old_log_folder)
 
