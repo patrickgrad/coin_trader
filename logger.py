@@ -5,6 +5,7 @@ from datetime import datetime
 import pickle as pkl
 import subprocess as subp
 import shutil
+import copy
 
 LOG_ERROR = 1
 LOG_WARN  = 2
@@ -64,7 +65,7 @@ class Logger:
         # Make data structure checkpoint before switching log folder
         self.make_checkpoint("end_chk.pkl")
 
-        old_log_folder = self.log_folder.copy()
+        old_log_folder = copy.copy(self.log_folder)
         self.log_folder = pth.join(os.getcwd(), "logs_{}".format(datetime.now().strftime("%Y%m%d_%H%M%S")))
         self.info_path = pth.join(self.log_folder, "info.log")
         self.warn_path = pth.join(self.log_folder, "warn.log")
