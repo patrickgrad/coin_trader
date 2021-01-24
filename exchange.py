@@ -120,6 +120,11 @@ class TickerClient(cbpro.WebsocketClient):
 
 class Exchange:
     def __init__(self, loop, logger, buyer, seller):
+        self.logger = logger
+        self.logger.exchange = self
+        self.logger.buyer = buyer
+        self.logger.seller = seller
+        
         self.api_key = self.get_system_variable("KEY")
         self.api_secret = self.get_system_variable("B64SECRET")
         self.api_passphrase = self.get_system_variable("PASSPHRASE")
@@ -135,11 +140,6 @@ class Exchange:
         self.ws_tickers.seller = seller
         self.ws_tickers.logger = logger
         self.ws_tickers.start()
-
-        self.logger = logger
-        self.logger.exchange = self
-        self.logger.buyer = buyer
-        self.logger.seller = seller
 
         self.buyer = buyer
         self.buyer.exchange = self
