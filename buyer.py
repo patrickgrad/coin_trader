@@ -79,7 +79,7 @@ class Buyer:
                     if self.exchange.rest_tokens >= 1:
                         self.place_order(msg)
 
-                        self.log_info("new {} {}".format(self.alpha, time_since_last_update))
+                        self.log_info("new alpha({}) last_update_t({})".format(self.alpha, time_since_last_update))
                     
                 # Check if we need to update our order
                 elif alpha_updated or price_threshold or size_threshold:
@@ -93,10 +93,10 @@ class Buyer:
 
                         self.place_order(msg)
 
-                        self.log_info("replace {} {}".format(self.alpha, time_since_last_update))
+                        self.log_info("replace alpha({}) last_update_t({})".format(self.alpha, time_since_last_update))
 
                 else:
-                    self.log_info("noop {} {}".format(self.alpha, time_since_last_update))
+                    self.log_info("noop alpha({}) last_update_t({})".format(self.alpha, time_since_last_update))
             except AttributeError:
                 self.log_info("data structures not ready yet")
                 self.our_price = -1
@@ -164,7 +164,7 @@ class Buyer:
 
     async def on_fill(self, msg):
         try:
-            self.log_info("fill {} {} {} {}".format(msg["size"], msg["price"], msg["side"], msg["maker_fee_rate"]))
+            self.log_info("fill size({}) price({}) side({}) maker_fee_rate({})".format(msg["size"], msg["price"], msg["side"], msg["maker_fee_rate"]))
 
             # Decrease the outstanding_order_vol
             self.outstanding_order_vol -= float(msg["size"])

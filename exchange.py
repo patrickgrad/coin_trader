@@ -71,6 +71,8 @@ class TickerClient(cbpro.WebsocketClient):
                 avg_price += e[1]
             self.exchange.avg_price = avg_price / len(self.samples)
 
+            self.exchange.log_info("tick avg_price({}) price({}) taker_side({}) size({}) bid({}) ask({})".format(self.exchange.avg_price, msg["price"], msg["side"], msg["last_size"], msg["best_bid"], msg["best_ask"]))
+
             asyncio.run(self.on_message_async(msg))
 
         elif msg["type"] == "status":
@@ -124,12 +126,12 @@ class Exchange:
         self.logger.exchange = self
         self.logger.buyer = buyer
         self.logger.seller = seller
-        
-        self.api_key = self.get_system_variable("KEY")
-        self.api_secret = self.get_system_variable("B64SECRET")
-        self.api_passphrase = self.get_system_variable("PASSPHRASE")
-        self.rest_url = self.get_system_variable("REST_URL")
-        self.ws_url = self.get_system_variable("WS_URL")
+
+        self.api_key = self.get_set_system_variable("KEY")
+        self.api_secret = self.get_set_system_variable("B64SECRET")
+        self.api_passphrase = self.get_set_system_variable("PASSPHRASE")
+        self.rest_url = self.get_set_system_variable("REST_URL")
+        self.ws_url = self.get_set_system_variable("WS_URL")
 
         self.rest_client = cbpro.AuthenticatedClient(self.api_key, self.api_secret, self.api_passphrase, api_url=self.rest_url)
         self.rest_client.cancel_all()
@@ -156,7 +158,6 @@ class Exchange:
         self.order_watchdog()
         self.exception_watchdog()
 
-
     def __del__(self):
         self.close()
 
@@ -173,7 +174,7 @@ class Exchange:
     def log_info(self, msg):
         self.logger.log_info("Exchange", msg)
 
-    def get_system_variable(self, name):
+    def get_set_system_variable(self, name):
         try:
             return os.environ[name]
         except KeyError:
