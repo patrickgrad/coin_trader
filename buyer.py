@@ -1,4 +1,5 @@
 import time
+import order as o
 
 LOG_ERROR = 1
 LOG_WARN  = 2
@@ -22,10 +23,8 @@ class Buyer:
     def __init__(self):
         # percent from 0 to 100 the buyer places the order above the last fill
         self.alpha = 2
-        self.our_price = -1
         self.our_bid = -1
-        self.open_order_id = ""
-        self.outstanding_order_vol = 0
+        self.order = o.Order()
         self.last_alpha_update = time.time_ns()*(10**-6)
 
         self.unhandled_exception = False
@@ -34,8 +33,8 @@ class Buyer:
         pass          
 
     def close(self):
-        if not self.our_price == -1:
-            self.exchange.rest_client.cancel_order(self.open_order_id)
+        if self.order.opened():
+            self.exchange.rest_client.cancel_order(self.order.order_id)
 
     def log_error(self, msg):
         self.logger.log_error("Buyer", msg)
@@ -46,7 +45,7 @@ class Buyer:
     def log_info(self, msg):
         self.logger.log_info("Buyer", msg)
 
-    async def on_tick(self, msg):
+    async def on_tick(self, msg, target_price):
         try:
             alpha_updated = False
             try:
@@ -65,19 +64,19 @@ class Buyer:
                         alpha_updated = True
 
                 size_target = max(min(volume_fn(self.exchange.balance_usd, self.exchange.balance_btc, self.exchange.avg_price), self.exchange.available_usd/self.our_bid), self.exchange.product["base_min_size"])
-                price_threshold = abs( self.our_price - self.exchange.avg_price ) / self.our_price >= P_DIFF_THRESH
+                price_threshold = abs( target_price - self.exchange.avg_price ) / target_price >= P_DIFF_THRESH
                 
                 try:
-                    size_threshold = abs( self.outstanding_order_vol - size_target) / self.outstanding_order_vol >= V_DIFF_THRESH
+                    size_threshold = abs( self.order.outstanding_order_size - size_target) / self.order.outstanding_order_size >= V_DIFF_THRESH
                 # If outstanding order volume is 0, then order was filled and we need to put a new one on
                 except ZeroDivisionError:
                     size_threshold = True
 
                 # Check if we haven't placed an order yet
-                if abs(self.outstanding_order_vol) < 10**-8:
+                if self.order.opened():
                     # Need 1 token to do this operation, if we don't have it abort
                     if self.exchange.rest_tokens >= 1:
-                        self.place_order(msg)
+                        self.place_order(msg, target_price)
 
                         self.log_info("new alpha({}) last_update_t({})".format(self.alpha, time_since_last_update))
                     
@@ -99,24 +98,19 @@ class Buyer:
                     self.log_info("noop alpha({}) last_update_t({})".format(self.alpha, time_since_last_update))
             except AttributeError:
                 self.log_info("data structures not ready yet")
-                self.our_price = -1
-                self.our_bid = -1
-                self.open_order_id = ""
-                self.outstanding_order_vol = 0
+                self.order = o.Order()
                 
         except:
             self.log_error("Unhandled exception!!!")
             self.log_error(traceback.format_exc())
             self.unhandled_exception = True
 
-    def place_order(self, msg):
+    def place_order(self, msg, target_price):
         # Send new order 
-        self.our_price = self.exchange.avg_price
-
-        self.our_bid = min(self.our_price * (1 - (self.alpha / 100)), float(msg["best_bid"]) + 0.01 )     # make sure our calculated price isn't more than 1 cent better than the best price being offered currently (fail-safe)
+        self.our_bid = min(self.target_price * (1 - (self.alpha / 100)), float(msg["best_bid"]) + 0.01 )     # make sure our calculated price isn't more than 1 cent better than the best price being offered currently (fail-safe)
         self.our_bid = round(self.our_bid, self.exchange.product["quote_increment"])        
 
-        size = max(min(volume_fn(self.exchange.balance_usd, self.exchange.balance_btc, self.exchange.avg_price), self.exchange.available_usd/self.our_bid), self.exchange.product["base_min_size"])
+        size = max(min(volume_fn(self.exchange.balance_usd, self.exchange.balance_btc, target_price), self.exchange.available_usd/self.our_bid), self.exchange.product["base_min_size"])
         size = round(size, self.exchange.product["base_increment"])
 
         resp = self.exchange.rest_client.place_limit_order(product_id="BTC-USD", side="buy", price=self.our_bid, size=size, post_only=True)
@@ -124,26 +118,22 @@ class Buyer:
 
         try:
             # Save order id and update balances of wallet
-            self.open_order_id = resp["id"]
-            self.outstanding_order_vol = float(resp["size"])
+            self.order = o.Order(float(resp["price"]), resp["id"], float(resp["size"]), float(resp["size"])-float(resp["filled_size"]))
+
             self.exchange.hold_usd += float(resp["size"]) * float(resp["price"])
             self.exchange.available_usd -= float(resp["size"]) * float(resp["price"])
             self.log_info("buy {} @ {} success".format(resp["size"], resp["price"]))
         except KeyError:
             self.log_warn("buy {} @ {} failed".format(size, self.our_bid))
-            self.log_info(resp)
 
             # Make sure we try to place order again quickly
-            self.our_price = -1
-            self.our_bid = -1
-            self.open_order_id = ""
-            self.outstanding_order_vol = 0
+            self.order = o.Order()
 
             # We weren't quick enough to get our order in, but we already cancelled our old order
             # So now we need to reinitalize some stuff to get it to place an order right away
             if resp["message"] == "Post only mode":
                 self.log_warn("order failed because of post only mode")
-            # We absolutly ran out of USD, need to sell some coin and back off alpha by factor of 1.1
+            # We absolutly ran out of USD, need to sell some coin and back off alpha
             elif resp["message"] == "Insufficient funds":
                 if self.exchange.rest_tokens >= 1:
                     resp = self.exchange.rest_client.place_market_order(product_id="BTC-USD", side="sell", size=self.exchange.product["base_min_size"]*3)
@@ -167,7 +157,7 @@ class Buyer:
             self.log_info("fill size({}) price({}) side({}) maker_fee_rate({})".format(msg["size"], msg["price"], msg["side"], msg["maker_fee_rate"]))
 
             # Decrease the outstanding_order_vol
-            self.outstanding_order_vol -= float(msg["size"])
+            self.order.outstanding_order_size -= float(msg["size"])
 
             # Increse alpha on each fill
             self.alpha *= 1.0075
@@ -176,7 +166,7 @@ class Buyer:
             # If we have been trading too much, increse alpha
             try:
                 # Only count as a trade when we fill the whole order
-                if abs(self.outstanding_order_vol) < 10**-8:
+                if self.order.filled():
                     time_since_last_trade = time.time_ns()*(10**-6) - self.last_trade_ms
 
                     if time_since_last_trade <= SHORT_TIME_MS:
@@ -207,10 +197,7 @@ class Buyer:
         # Order got filled or closed and we missed it
         # so we need to make sure we place an order
         if len(orders) == 0:
-            self.our_price = -1
-            self.our_bid = -1
-            self.open_order_id = ""
-            self.outstanding_order_vol = 0
+            self.order = o.Order()
         # Check consistency of open orders with the 
         # information we have stored
         else:
@@ -223,12 +210,9 @@ class Buyer:
                         cancelled_orders += 1
 
             # This is bad news, it means all outstanding orders
-            # were unknown by the trading software
+            # were unknown by our trading algorithm
             if cancelled_orders == len(orders):
-                self.our_price = -1
-                self.our_bid = -1
-                self.open_order_id = ""
-                self.outstanding_order_vol = 0
+                self.order = o.Order()
 
 
 

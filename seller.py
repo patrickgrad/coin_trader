@@ -1,5 +1,5 @@
 import time
-import traceback
+import open_order as oo
 
 LOG_ERROR = 1
 LOG_WARN  = 2
@@ -23,7 +23,7 @@ class Seller:
     def __init__(self):
         # percent from 0 to 100 the buyer places the order above the last fill
         self.alpha = 2
-        self.our_price = -1
+        self.target_price = -1
         self.our_ask = -1
         self.open_order_id = ""
         self.outstanding_order_vol = 0
@@ -35,7 +35,7 @@ class Seller:
         pass
 
     def close(self):
-        if not self.our_price == -1:
+        if not self.target_price == -1:
             self.exchange.rest_client.cancel_order(self.open_order_id)
 
     def log_error(self, msg):
@@ -66,7 +66,7 @@ class Seller:
                         alpha_updated = True     
 
                 size_target = max(min(volume_fn(self.exchange.balance_usd, self.exchange.balance_btc, self.exchange.avg_price), self.exchange.available_btc), self.exchange.product["base_min_size"])
-                price_threshold = abs( self.our_price - self.exchange.avg_price ) / self.our_price >= P_DIFF_THRESH
+                price_threshold = abs( self.target_price - self.exchange.avg_price ) / self.target_price >= P_DIFF_THRESH
 
                 try:
                     size_threshold = abs( self.outstanding_order_vol - size_target) / self.outstanding_order_vol >= V_DIFF_THRESH
@@ -101,7 +101,7 @@ class Seller:
                     self.log_info("noop alpha({}) last_update_t({})".format(self.alpha, time_since_last_update))
             except AttributeError:
                 self.log_info("data structures not ready yet")
-                self.our_price = -1
+                self.target_price = -1
                 self.our_ask = -1
                 self.open_order_id = ""
                 self.outstanding_order_vol = 0
@@ -114,9 +114,9 @@ class Seller:
 
     def place_order(self, msg):
         # Send new order 
-        self.our_price = self.exchange.avg_price
+        self.target_price = self.exchange.avg_price
 
-        self.our_ask = max(self.our_price * (1 + (self.alpha / 100)), float(msg["best_ask"]) - 0.01 )     # make sure our calculated price isn't more than 1 cent better than the best price being offered currently (fail-safe)
+        self.our_ask = max(self.target_price * (1 + (self.alpha / 100)), float(msg["best_ask"]) - 0.01 )     # make sure our calculated price isn't more than 1 cent better than the best price being offered currently (fail-safe)
         self.our_ask = round(self.our_ask, self.exchange.product["quote_increment"])        
 
         size = max(min(volume_fn(self.exchange.balance_usd, self.exchange.balance_btc, self.exchange.avg_price), self.exchange.available_btc), self.exchange.product["base_min_size"])
@@ -137,7 +137,7 @@ class Seller:
             self.log_info(resp)
 
             # Make sure we try to place order again quickly
-            self.our_price = -1
+            self.target_price = -1
             self.our_ask = -1
             self.open_order_id = ""
             self.outstanding_order_vol = 0
@@ -209,7 +209,7 @@ class Seller:
         # Order got filled or closed and we missed it
         # so we need to make sure we place an order
         if len(orders) == 0:
-            self.our_price = -1
+            self.target_price = -1
             self.our_bid = -1
             self.open_order_id = ""
             self.outstanding_order_vol = 0
@@ -227,7 +227,7 @@ class Seller:
             # This is bad news, it means all outstanding orders
             # were unknown by the trading software
             if cancelled_orders == len(orders):
-                self.our_price = -1
+                self.target_price = -1
                 self.our_bid = -1
                 self.open_order_id = ""
                 self.outstanding_order_vol = 0

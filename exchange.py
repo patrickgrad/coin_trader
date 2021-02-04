@@ -73,7 +73,7 @@ class TickerClient(cbpro.WebsocketClient):
 
             self.exchange.log_info("tick avg_price({}) price({}) taker_side({}) size({}) bid({}) ask({})".format(self.exchange.avg_price, msg["price"], msg["side"], msg["last_size"], msg["best_bid"], msg["best_ask"]))
 
-            asyncio.run(self.on_message_async(msg))
+            asyncio.run(self.on_message_async(msg, self.exchange.avg_price))
 
         elif msg["type"] == "status":
             products = msg["products"]
@@ -108,10 +108,10 @@ class TickerClient(cbpro.WebsocketClient):
         await bof
         await sof
        
-    async def on_message_async(self, msg):       
+    async def on_message_async(self, msg, target_price):       
         # Kick off on tick tasks
-        bot = asyncio.create_task( self.buyer.on_tick(msg) )
-        sot = asyncio.create_task( self.seller.on_tick(msg) )
+        bot = asyncio.create_task( self.buyer.on_tick(msg, target_price) )
+        sot = asyncio.create_task( self.seller.on_tick(msg, target_price) )
 
         # Wait until they're done before continuing
         await bot
