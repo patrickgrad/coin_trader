@@ -86,7 +86,7 @@ class Buyer:
                     if self.exchange.rest_tokens >= 2:
 
                         # Cancel previous order
-                        resp = self.exchange.rest_client.cancel_order(self.open_order_id)
+                        resp = self.exchange.rest_client.cancel_order(self.order.order_id)
                         #TODO : need to update wallet when we cancel the order
                         self.exchange.rest_tokens -= 1
 
@@ -172,8 +172,6 @@ class Buyer:
                     if time_since_last_trade <= SHORT_TIME_MS:
                         self.alpha *= 5
 
-                    if self.alpha > 50:
-                        self.alpha = 50
             except AttributeError:
                 self.log_info("first trade, can't update alpha yet")
 
@@ -192,18 +190,19 @@ class Buyer:
             self.log_error("Unhandled exception!!!")
             self.log_error(traceback.format_exc())
             self.unhandled_exception = True
-
+            
+    # Match channel doesn't guarantee delivery so we need to watch our open orders
+    # and make sure we stay in a good state
     def on_order_watchdog(self, orders):
         # Order got filled or closed and we missed it
         # so we need to make sure we place an order
         if len(orders) == 0:
             self.order = o.Order()
-        # Check consistency of open orders with the 
-        # information we have stored
+        # Check consistency of open orders with the information we have stored
         else:
             cancelled_orders = 0
             for order in orders:
-                if not order["id"] == self.open_order_id:
+                if not order["id"] == self.order.order_id:
                     if self.exchange.rest_tokens >= 1:
                         self.exchange.rest_client.cancel_order(order["id"])
                         self.exchange.rest_tokens -= 1

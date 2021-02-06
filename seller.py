@@ -1,5 +1,5 @@
 import time
-import open_order as oo
+import order as o
 
 LOG_ERROR = 1
 LOG_WARN  = 2
@@ -23,10 +23,8 @@ class Seller:
     def __init__(self):
         # percent from 0 to 100 the buyer places the order above the last fill
         self.alpha = 2
-        self.target_price = -1
         self.our_ask = -1
-        self.open_order_id = ""
-        self.outstanding_order_vol = 0
+        self.order = o.Order()
         self.last_alpha_update = time.time_ns()*(10**-6)
 
         self.unhandled_exception = False
@@ -35,8 +33,8 @@ class Seller:
         pass
 
     def close(self):
-        if not self.target_price == -1:
-            self.exchange.rest_client.cancel_order(self.open_order_id)
+        if self.order.opened():
+            self.exchange.rest_client.cancel_order(self.order.order_id)
 
     def log_error(self, msg):
         self.logger.log_error("Seller", msg)
@@ -69,13 +67,13 @@ class Seller:
                 price_threshold = abs( self.target_price - self.exchange.avg_price ) / self.target_price >= P_DIFF_THRESH
 
                 try:
-                    size_threshold = abs( self.outstanding_order_vol - size_target) / self.outstanding_order_vol >= V_DIFF_THRESH
+                    size_threshold = abs( self.order.outstanding_order_size - size_target) / self.order.outstanding_order_size >= V_DIFF_THRESH
                 # If outstanding order volume is 0, then order was filled and we need to put a new one on
                 except ZeroDivisionError:
                     size_threshold = True
 
                 # Check if we haven't placed an order yet
-                if abs(self.outstanding_order_vol) < 10**-8:
+                if self.order.opened():
                     # Need 1 token to do this operation, if we don't have it abort
                     if self.exchange.rest_tokens >= 1:
                         self.place_order(msg)
@@ -89,7 +87,7 @@ class Seller:
                     if self.exchange.rest_tokens >= 2:
 
                         # Cancel previous order
-                        resp = self.exchange.rest_client.cancel_order(self.open_order_id)
+                        resp = self.exchange.rest_client.cancel_order(self.order.order_id)
                         #TODO : need to update wallet when we cancel the order
                         self.exchange.rest_tokens -= 1
 
@@ -101,21 +99,15 @@ class Seller:
                     self.log_info("noop alpha({}) last_update_t({})".format(self.alpha, time_since_last_update))
             except AttributeError:
                 self.log_info("data structures not ready yet")
-                self.target_price = -1
-                self.our_ask = -1
-                self.open_order_id = ""
-                self.outstanding_order_vol = 0
+                self.order = o.Order()
 
         except:
             self.log_error("Unhandled exception!!!")
             self.log_error(traceback.format_exc())
             self.unhandled_exception = True
 
-
     def place_order(self, msg):
-        # Send new order 
-        self.target_price = self.exchange.avg_price
-
+        # Send new order
         self.our_ask = max(self.target_price * (1 + (self.alpha / 100)), float(msg["best_ask"]) - 0.01 )     # make sure our calculated price isn't more than 1 cent better than the best price being offered currently (fail-safe)
         self.our_ask = round(self.our_ask, self.exchange.product["quote_increment"])        
 
@@ -127,20 +119,16 @@ class Seller:
 
         try:
             # Save order id and update balances of wallet
-            self.open_order_id = resp["id"]
-            self.outstanding_order_vol = float(resp["size"])
+            self.order = o.Order(float(resp["price"]), resp["id"], float(resp["size"]), float(resp["size"])-float(resp["filled_size"]))
+
             self.exchange.hold_btc += float(resp["size"]) 
             self.exchange.available_btc -= float(resp["size"]) 
             self.log_info("sell {} @ {} success".format(resp["size"], resp["price"]))
         except KeyError:
             self.log_warn("sell {} @ {} failed".format(size, self.our_ask))
-            self.log_info(resp)
 
             # Make sure we try to place order again quickly
-            self.target_price = -1
-            self.our_ask = -1
-            self.open_order_id = ""
-            self.outstanding_order_vol = 0
+            self.order = o.Order()
 
             # We weren't quick enough to get our order in, but we already cancelled our old order
             # So now we need to reinitalize some stuff to get it to place an order right away
@@ -178,14 +166,12 @@ class Seller:
             # If we have been trading too much, increse alpha
             try:
                 # Only count as a trade when we fill the whole order
-                if abs(self.outstanding_order_vol) < 10**-8:
+                if self.order.filled():
                     time_since_last_trade = time.time_ns()*(10**-6) - self.last_trade_ms
 
                     if time_since_last_trade <= SHORT_TIME_MS:
                         self.alpha *= 5
 
-                    if self.alpha > 50:
-                        self.alpha = 50
             except AttributeError:
                 self.log_info("first trade, can't update alpha yet")  
 
@@ -205,20 +191,18 @@ class Seller:
             self.log_error(traceback.format_exc())
             self.unhandled_exception = True
 
+    # Match channel doesn't guarantee delivery so we need to watch our open orders
+    # and make sure we stay in a good state
     def on_order_watchdog(self, orders):
         # Order got filled or closed and we missed it
         # so we need to make sure we place an order
         if len(orders) == 0:
-            self.target_price = -1
-            self.our_bid = -1
-            self.open_order_id = ""
-            self.outstanding_order_vol = 0
-        # Check consistency of open orders with the 
-        # information we have stored
+            self.order = o.Order()
+        # Check consistency of open orders with the information we have stored
         else:
             cancelled_orders = 0
             for order in orders:
-                if not order["id"] == self.open_order_id:
+                if not order["id"] == self.order.order_id:
                     if self.exchange.rest_tokens >= 1:
                         self.exchange.rest_client.cancel_order(order["id"])
                         self.exchange.rest_tokens -= 1
@@ -227,8 +211,5 @@ class Seller:
             # This is bad news, it means all outstanding orders
             # were unknown by the trading software
             if cancelled_orders == len(orders):
-                self.target_price = -1
-                self.our_bid = -1
-                self.open_order_id = ""
-                self.outstanding_order_vol = 0
+                self.order = o.Order()
 
