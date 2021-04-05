@@ -12,6 +12,7 @@ class LeakyBucket:
         self.closed = False
 
         self.thread = Thread(target=self.add_tokens)
+        self.thread.name = "LeakyBucket_{}_{}".format(N, interval)
         self.thread.start()
 
     # Just in case we forget to close

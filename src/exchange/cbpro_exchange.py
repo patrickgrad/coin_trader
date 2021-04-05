@@ -8,6 +8,9 @@ from exchange.api import TickerClient
 
 class CBProExchange:
     def __init__(self, logger, config):
+        self.opened = False
+        self.closed = False
+
         self.logger = logger
         self.logger.exchange = self
 
@@ -44,24 +47,25 @@ class CBProExchange:
             self.agents.append(s)
             self.prodid_to_agents[prod_id] = [b, s]
 
-        self.opened = False
-        self.closed = False
-
     # Delay loop based initialization until we are in asyncio context
     def open(self):
         if not self.opened:
-            self.opened = True
             self.loop = asyncio.get_running_loop()
 
-            self.lb = LeakyBucket(10, 0.2)
+            # Max of 5 tokens, new token every 0.2 seconds
+            # Limits average request rate to 5/s with max bursts of 10/s 
+            self.lb = LeakyBucket(5, 0.2)
 
             self.ws_tickers = TickerClient()
             self.ws_tickers.exchange = self
             self.ws_tickers.logger = self.logger
+            self.ws_tickers.loop = self.loop
             self.ws_tickers.start()
 
             self.get_accounts()
             self.order_watchdog()
+
+            self.opened = True
 
     # Safety net in case we forget to call close
     def __del__(self):
@@ -70,9 +74,10 @@ class CBProExchange:
     # Tear down object
     def close(self):
         if not self.closed:
-            self.closed = True
             self.lb.close()
             self.ws_tickers.close()
+
+            self.closed = True
 
     def log_error(self, msg):
         self.logger.log_error("CBProExchange", msg)

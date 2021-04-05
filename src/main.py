@@ -22,11 +22,15 @@ async def main(logger, exchange):
     for thread in threading.enumerate(): 
         print("THREAD : {}".format(thread.name))
 
-    while loop.is_running():
-        print("Active tasks count: ", len([task for task in asyncio.all_tasks() if not task.done()]))
+    all_threads_alive = True
+    while loop.is_running() and all_threads_alive:
+        # print("Active tasks count: ", len([task for task in asyncio.all_tasks() if not task.done()]))
+        all_threads_alive = True
         for thread in threading.enumerate(): 
-            print("THREAD : {}".format(thread.name))
-        await asyncio.sleep(0.5)
+            if not thread.is_alive():
+                all_threads_alive = False
+
+        await asyncio.sleep(1.0)
 
 if __name__ == "__main__":
     if len(sys.argv) <= 1:

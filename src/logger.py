@@ -16,6 +16,9 @@ LOG_OFF   = 4
 
 class Logger:
     def __init__(self):
+        self.opened = False
+        self.closed = False
+
         self.log_folder = pth.join(os.getcwd(), "logs_{}".format(datetime.now().strftime("%Y%m%d_%H%M%S")))
         self.info_path = pth.join(self.log_folder, "info.log")
         self.warn_path = pth.join(self.log_folder, "warn.log")
@@ -27,15 +30,13 @@ class Logger:
         self.warn_fp = open(self.warn_path, "w")
         self.error_fp = open(self.error_path, "w")
 
-        self.opened = False
-        self.closed = False
-
     # Delay loop based initialization until we are in asyncio context
     def open(self):
         if not self.opened:
-            self.opened = True
             self.loop = asyncio.get_running_loop()
             self.loop.call_later(15 * 60, self.new_log_folder)
+
+            self.opened = True
 
     # Safety net in case we forget to call close
     def __del__(self):
@@ -44,10 +45,11 @@ class Logger:
     # Tear down object
     def close(self):
         if not self.closed:
-            self.closed = True
             self.info_fp.close()
             self.warn_fp.close()
             self.error_fp.close()
+
+            self.closed = True
 
     def log_error(self, prefix, msg):
         time = datetime.now().strftime("%Y%m%d_%H%M%S")

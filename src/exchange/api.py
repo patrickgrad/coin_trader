@@ -5,7 +5,10 @@ import cbpro
 
 TICK_LOOKBACK_TIME = (15 * 1000)
 
+# WARNING : many callbackes in this class are called from the thread in the
+#           WebsocketClient class, not the main thread
 class TickerClient(cbpro.WebsocketClient):
+    # Called from MainThread
     def on_open(self):
         # Need to hold the exchange credentials
         self.auth = True
@@ -23,12 +26,17 @@ class TickerClient(cbpro.WebsocketClient):
         
         self.logger.log_info("TickerClient", "-- Match Socket Opened --")
 
+    # Called from WebsocketClient thread
     def on_error(self, e, data=None):
         self.error = e
         self.stop = True
         self.logger.log_error("TickerClient", "{} - data: {}".format(e, data))
 
+    # Called from WebsocketClient thread
     def on_message(self, msg):
+        # Only way to do this without changing the WebsocketClient
+        self.thread.name = "TickerClient"
+
         if msg["type"] == "ticker":
             product_id = msg["product_id"]
             ts = msg["side"]
@@ -55,10 +63,10 @@ class TickerClient(cbpro.WebsocketClient):
 
             self.exchange.log_info("tick product_id({}) avg_price({}) price({}) taker_side({}) size({}) bid({}) ask({})".format(product_id, avg_price, msg["price"], msg["side"], msg["last_size"], msg["best_bid"], msg["best_ask"]))
 
-            # # Look at agents for this product id only and kick off on tick tasks
-            # for agent in self.exchange.prodid_to_agents[product_id]:
-            #     # TODO : Need to launch this in the main thread (in the main loop)
-            #     agent.on_tick(msg, avg_price)
+            # Look at agents for this product id only and kick off on tick tasks
+            for agent in self.exchange.prodid_to_agents[product_id]:
+                # Want to launch this in the main thread, so need to use threadsafe version of call soon
+                self.loop.call_soon_threadsafe(agent.on_tick, msg, avg_price)
 
         elif msg["type"] == "status":
             products = msg["products"]
@@ -76,6 +84,7 @@ class TickerClient(cbpro.WebsocketClient):
             except KeyError:
                 self.exchange.log_warn("We were not the maker (GUI manual order or rebalance order?)")
 
+    # Called from WebsocketClient thread (actually called from on_message)
     def on_fill(self, msg):
         # Look at agents for this product id only and kick off on fill tasks
         target, base = msg["product_id"].split("-")
@@ -93,8 +102,9 @@ class TickerClient(cbpro.WebsocketClient):
             self.exchange.balance[target] = self.exchange.hold[target] + self.exchange.available[target]
 
             # Kick off on_fill callback
-            # TODO : Need to launch this in the main thread (in the main loop)
-            agent.on_fill(msg)        
+            # Want to launch this in the main thread, so need to use threadsafe version of call soon
+            self.loop.call_soon_threadsafe(agent.on_fill, msg)
 
+    # Called from MainThread
     def on_close(self):
         self.logger.log_info("TickerClient", "-- Match Socket Closed --")

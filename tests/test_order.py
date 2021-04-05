@@ -10,7 +10,7 @@ def test_order_opened_placed():
     assert o.opened() == False and o.filled() == False
 
 # Scenario when an order is placed and we received the response and it was a success
-def test_order_opened_placed():
+def test_order_opened_placed_acked():
     o = Order(price=100, order_size=1, order_id="blah-blah-blah", outstanding_order_size=1)
     assert o.opened() == True and o.filled() == False
 
