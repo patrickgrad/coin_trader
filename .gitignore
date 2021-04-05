@@ -1,2 +1,4 @@
 logs_*
 __pycache__
+*.egg-info
+.coverage

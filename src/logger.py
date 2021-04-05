@@ -7,6 +7,7 @@ import subprocess as subp
 import shutil
 import copy
 import hashlib
+import asyncio
 
 LOG_ERROR = 1
 LOG_WARN  = 2
@@ -14,7 +15,10 @@ LOG_INFO  = 3
 LOG_OFF   = 4
 
 class Logger:
-    def __init__(self, loop):
+    def __init__(self):
+        self.opened = False
+        self.closed = False
+
         self.log_folder = pth.join(os.getcwd(), "logs_{}".format(datetime.now().strftime("%Y%m%d_%H%M%S")))
         self.info_path = pth.join(self.log_folder, "info.log")
         self.warn_path = pth.join(self.log_folder, "warn.log")
@@ -26,16 +30,26 @@ class Logger:
         self.warn_fp = open(self.warn_path, "w")
         self.error_fp = open(self.error_path, "w")
 
-        self.loop = loop
-        self.loop.call_later(15 * 60, self.new_log_folder)
+    # Delay loop based initialization until we are in asyncio context
+    def open(self):
+        if not self.opened:
+            self.loop = asyncio.get_running_loop()
+            self.loop.call_later(15 * 60, self.new_log_folder)
 
+            self.opened = True
+
+    # Safety net in case we forget to call close
     def __del__(self):
         self.close()
 
+    # Tear down object
     def close(self):
-        self.info_fp.close()
-        self.warn_fp.close()
-        self.error_fp.close()
+        if not self.closed:
+            self.info_fp.close()
+            self.warn_fp.close()
+            self.error_fp.close()
+
+            self.closed = True
 
     def log_error(self, prefix, msg):
         time = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -109,23 +123,23 @@ class Logger:
         except AttributeError:
             self.log_info("Logger", "Save, no wallet data")
 
-        buyer = {}
-        buyer["alpha"] = self.buyer.alpha
-        buyer["last_alpha_update"] = self.buyer.last_alpha_update
-        try:
-            buyer["last_trade_ms"] = self.buyer.last_trade_ms
-        except:
-            pass
-        save_data["buyer"] = buyer
+        # buyer = {}
+        # buyer["alpha"] = self.buyer.alpha
+        # buyer["last_alpha_update"] = self.buyer.last_alpha_update
+        # try:
+        #     buyer["last_trade_ms"] = self.buyer.last_trade_ms
+        # except:
+        #     pass
+        # save_data["buyer"] = buyer
 
-        seller = {}
-        seller["alpha"] = self.seller.alpha
-        seller["last_alpha_update"] = self.seller.last_alpha_update
-        try:
-            seller["last_trade_ms"] = self.seller.last_trade_ms
-        except:
-            pass
-        save_data["seller"] = seller
+        # seller = {}
+        # seller["alpha"] = self.seller.alpha
+        # seller["last_alpha_update"] = self.seller.last_alpha_update
+        # try:
+        #     seller["last_trade_ms"] = self.seller.last_trade_ms
+        # except:
+        #     pass
+        # save_data["seller"] = seller
 
         with open(pth.join(self.log_folder, fn), 'wb') as cfg:
             pkl.dump(save_data, cfg)
@@ -144,25 +158,25 @@ class Logger:
         except AttributeError:
             self.log_info("Logger", "Restore, no wallet data")
 
-        buyer = save_data["buyer"]
-        self.buyer.alpha = buyer["alpha"]
-        self.buyer.last_alpha_update = buyer["last_alpha_update"]
-        try:
-            self.buyer.last_trade_ms = buyer["last_trade_ms"]
-        except:
-            pass
+        # buyer = save_data["buyer"]
+        # self.buyer.alpha = buyer["alpha"]
+        # self.buyer.last_alpha_update = buyer["last_alpha_update"]
+        # try:
+        #     self.buyer.last_trade_ms = buyer["last_trade_ms"]
+        # except:
+        #     pass
 
-        seller = save_data["seller"]
-        self.seller.alpha = seller["alpha"]
-        self.seller.last_alpha_update = seller["last_alpha_update"]
-        try:
-            self.seller.last_trade_ms = seller["last_trade_ms"]
-        except:
-            pass
+        # seller = save_data["seller"]
+        # self.seller.alpha = seller["alpha"]
+        # self.seller.last_alpha_update = seller["last_alpha_update"]
+        # try:
+        #     self.seller.last_trade_ms = seller["last_trade_ms"]
+        # except:
+        #     pass
 
     def exception_handler(self, loop, context):
+        self.close()
         self.exchange.close()
-        self.loop.stop()
         
         self.log_error("Main", "Exception handler called in asyncio")
         self.log_error("Main", context["message"])
