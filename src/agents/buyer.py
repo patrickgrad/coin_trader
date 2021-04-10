@@ -1,7 +1,7 @@
 import time
-from agents.trading_agent import TradingAgent
-from order import Order
-from logger import Logger
+from src.agents.trading_agent import TradingAgent
+from src.order import Order
+from src.logger import Logger
 
 class Buyer(TradingAgent):
     def __init__(self, config):

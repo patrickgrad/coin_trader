@@ -1,5 +1,6 @@
 import numpy as np
 import time
+import abc
 from src.order import Order
 
 P_DIFF_THRESH = 0.0010
@@ -8,7 +9,7 @@ LONG_TIME_MS = (5 * 60 * 1000)
 SHORT_TIME_MS = (30 * 1000)
 MILLI = (10**-6)
 
-class TradingAgent:
+class TradingAgent(metaclass=abc.ABCMeta):
     def __init__(self, config):
         self.order = Order()
         self.last_alpha_update = time.time_ns()*MILLI
@@ -23,24 +24,31 @@ class TradingAgent:
         self.alpha_up_tick = config["AlphaUpTick"]
         self.alpha_down_tick = config["AlphaDownTick"]
 
-    def __del__(self):
-        pass
+        self.closed = False
 
     def close(self):
-        if self.order.opened():
+        if self.order.opened() and self.closed == False:
             self.exchange.cancel_order(self.order.order_id, product_id=self.product_id)
+            self.closed = True
 
+    def __del__(self):
+        self.close()
+
+    @abc.abstractmethod
     def log_error(self, msg):
-        raise Exception("log_error not implemented")
-    
+        return
+
+    @abc.abstractmethod
     def log_warn(self, msg):
-        raise Exception("log_warn not implemented")
+        return
 
+    @abc.abstractmethod
     def log_info(self, msg):
-        raise Exception("log_info not implemented")
+        return
 
+    @abc.abstractmethod
     def is_buyer(self):
-        raise Exception("is_buyer not implemented")
+        return
 
     def on_tick(self, msg, mid_price):
         alpha_updated = False
@@ -70,10 +78,10 @@ class TradingAgent:
                 size_threshold = abs( self.order.outstanding_order_size - new_order_size) / self.order.outstanding_order_size >= V_DIFF_THRESH
             # If outstanding order volume is 0, then order was filled and we need to put a new one on
             except ZeroDivisionError:
-                size_threshold = True
+                self.order = Order()
 
-            self.log_info("OPENED {}".format(self.order.opened()))
-            self.log_info("{} {}".format(price_threshold, size_threshold))
+            # self.log_info("OPENED {}".format(self.order.opened()))
+            # self.log_info("{} {}".format(price_threshold, size_threshold))
 
             # Check if we haven't placed an order yet and if so place one
             if not self.order.opened():
@@ -98,25 +106,31 @@ class TradingAgent:
     def alpha_limits(self, a):
         return np.clip(a, self.alpha_lower, self.alpha_upper)
 
+    @abc.abstractmethod
     def place_limit_order(self, price, size):
-        raise Exception("place_limit_order not implemented")
+        return
 
+    @abc.abstractmethod
     def replace_limit_order(self, price, size):
-        raise Exception("replace_limit_order not implemented")
+        return
 
+    @abc.abstractmethod
     def calculate_price(self, msg, mid_price):
-        raise Exception("calculate_price not implemented")       
+        return
 
+    @abc.abstractmethod
     def calculate_size(self, price):
-        raise Exception("calculate_size not implemented")       
+        return
 
     # Validate that the order we placed had no errors, or respond to the error
+    @abc.abstractmethod
     def on_order_placed_limit(self, resp):
-        raise Exception("on_order_placed_limit not implemented")       
+        return
 
     # This is only used when we run out of coin and have to emergency buy some
+    @abc.abstractmethod
     def on_order_placed_market(self, resp):
-        raise Exception("on_order_placed_market not implemented")       
+        return
 
     def on_fill(self, msg):
         self.log_info("fill size({}) price({}) side({}) maker_fee_rate({})".format(msg["size"], msg["price"], msg["side"], msg["maker_fee_rate"]))
@@ -155,6 +169,7 @@ class TradingAgent:
             cancelled_orders = 0
             for order in orders:
                 if not order["id"] == self.order.order_id:
+                    print(order["id"])
                     self.exchange.cancel_order(order_id=order["id"])
                     cancelled_orders += 1
 

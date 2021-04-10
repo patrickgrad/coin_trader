@@ -37,15 +37,17 @@ class CBProExchange:
         self.agents = []
         self.prodid_to_agents = {}
         for prod_id in self.product_ids:
-            b = Buyer(self.configs[prod_id])
-            s = Seller(self.configs[prod_id])
-            b.exchange = self
-            b.logger = logger
-            s.exchange = self
-            s.logger = logger
-            self.agents.append(b)
-            self.agents.append(s)
-            self.prodid_to_agents[prod_id] = [b, s]
+            # Only add trading agents for products we actually want to trade, we can also just gather data
+            if self.configs[prod_id]["Trade"]:
+                b = Buyer(self.configs[prod_id])
+                s = Seller(self.configs[prod_id])
+                b.exchange = self
+                b.logger = logger
+                s.exchange = self
+                s.logger = logger
+                self.agents.append(b)
+                self.agents.append(s)
+                self.prodid_to_agents[prod_id] = [b, s]
 
     # Delay loop based initialization until we are in asyncio context
     def open(self):
@@ -129,8 +131,8 @@ class CBProExchange:
         
     def replace_limit_order(self, prev_order, on_order_placed, **kwargs):
         self.lb.acquire(2)
-        self.rest_client.cancel_order(prev_order.order_id) #TODO : need to update wallet when we cancel the order
         resp = self.rest_client.place_limit_order(**kwargs)
+        self.rest_client.cancel_order(prev_order.order_id) #TODO : need to update wallet when we cancel the order
         self.lb.release()
         on_order_placed(resp)
 

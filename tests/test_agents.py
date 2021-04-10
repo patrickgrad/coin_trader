@@ -1,4 +1,4 @@
-from src.agents.trading_agent import TradingAgent
+from src.agents.buyer import Buyer
 import time
 
 def get_test_agent():
@@ -11,7 +11,7 @@ def get_test_agent():
     config["AlphaUpTick"] = 1.0075
     config["AlphaDownTick"] = 0.8
 
-    return TradingAgent(config)
+    return Buyer(config)
 
 # Test constructor
 def test_constructor():

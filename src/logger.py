@@ -19,6 +19,8 @@ class Logger:
         self.opened = False
         self.closed = False
 
+        self.log_drive = self.get_system_variable("LOG_DRIVE")
+
         self.log_folder = pth.join(os.getcwd(), "logs_{}".format(datetime.now().strftime("%Y%m%d_%H%M%S")))
         self.info_path = pth.join(self.log_folder, "info.log")
         self.warn_path = pth.join(self.log_folder, "warn.log")
@@ -29,6 +31,14 @@ class Logger:
         self.info_fp = open(self.info_path, "w")
         self.warn_fp = open(self.warn_path, "w")
         self.error_fp = open(self.error_path, "w")
+
+    def get_system_variable(self, name):
+        try:
+            return os.environ[name]
+        except KeyError:
+            self.log_warn('"{}" does not exist!'.format(name))
+            val = input("{}:".format(name))
+            return val
 
     # Delay loop based initialization until we are in asyncio context
     def open(self):
@@ -104,7 +114,7 @@ class Logger:
         with open(old_log_compressed, "rb") as f:
             cksum = hashlib.sha256(f.read()).hexdigest()
         
-        subp.run(["uplink", "cp", "--metadata", '{\"cksum\":\"'+cksum+'\"}', old_log_compressed, "sj://logs"])
+        subp.run(["uplink", "cp", "--metadata", '{\"cksum\":\"'+cksum+'\"}', old_log_compressed, "sj://{}".format(self.log_drive)])
         os.remove(old_log_compressed)
         shutil.rmtree(old_log_folder)
 

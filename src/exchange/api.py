@@ -63,10 +63,12 @@ class TickerClient(cbpro.WebsocketClient):
 
             self.exchange.log_info("tick product_id({}) avg_price({}) price({}) taker_side({}) size({}) bid({}) ask({})".format(product_id, avg_price, msg["price"], msg["side"], msg["last_size"], msg["best_bid"], msg["best_ask"]))
 
-            # Look at agents for this product id only and kick off on tick tasks
-            for agent in self.exchange.prodid_to_agents[product_id]:
-                # Want to launch this in the main thread, so need to use threadsafe version of call soon
-                self.loop.call_soon_threadsafe(agent.on_tick, msg, avg_price)
+            # Only need to do this part if we have a trading agent associated with this product
+            if product_id in self.exchange.prodid_to_agents:
+                # Look at agents for this product id only and kick off on tick tasks
+                for agent in self.exchange.prodid_to_agents[product_id]:
+                    # Want to launch this in the main thread, so need to use threadsafe version of call soon
+                    self.loop.call_soon_threadsafe(agent.on_tick, msg, avg_price)
 
         elif msg["type"] == "status":
             products = msg["products"]

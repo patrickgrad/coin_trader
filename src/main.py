@@ -19,9 +19,6 @@ async def main(logger, exchange):
     logger.open()
     exchange.open()
 
-    for thread in threading.enumerate(): 
-        print("THREAD : {}".format(thread.name))
-
     all_threads_alive = True
     while loop.is_running() and all_threads_alive:
         # print("Active tasks count: ", len([task for task in asyncio.all_tasks() if not task.done()]))
