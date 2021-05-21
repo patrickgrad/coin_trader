@@ -4,7 +4,7 @@ import asyncio
 from agents.buyer import Buyer
 from agents.seller import Seller
 from exchange.leaky_bucket import LeakyBucket
-from exchange.api import TickerClient
+from exchange.cbpro.cbpro_websocket import TickerClient
 
 class CBProExchange:
     def __init__(self, logger, config):
@@ -91,13 +91,12 @@ class CBProExchange:
         self.logger.log_info("CBProExchange", msg)
 
     def products_to_currencies(self, products):
-        ret = []
+        ret = set()
         for p in products:
             curs = p.split("-")
             
             for c in curs:
-                if c not in ret:
-                    ret.append(c)
+                ret.add(c)
 
         return ret
 

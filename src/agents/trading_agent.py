@@ -28,7 +28,7 @@ class TradingAgent(metaclass=abc.ABCMeta):
 
     def close(self):
         if self.order.opened() and self.closed == False:
-            self.exchange.cancel_order(self.order.order_id, product_id=self.product_id)
+            self.exchange.cancel_order(self.order.order_id)
             self.closed = True
 
     def __del__(self):
