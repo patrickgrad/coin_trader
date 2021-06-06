@@ -44,7 +44,7 @@ class Logger:
     def open(self):
         if not self.opened:
             self.loop = asyncio.get_running_loop()
-            self.loop.call_later(15 * 60, self.new_log_folder)
+            self.loop.call_later(1 * 60, self.new_log_folder)
 
             self.opened = True
 
