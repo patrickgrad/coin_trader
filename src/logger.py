@@ -44,7 +44,7 @@ class Logger:
     def open(self):
         if not self.opened:
             self.loop = asyncio.get_running_loop()
-            self.loop.call_later(15, self.new_log_folder)
+            self.loop.call_later(15 * 60, self.new_log_folder)
 
             self.opened = True
 
@@ -98,8 +98,6 @@ class Logger:
         subp.run(["uplink", "cp", "--metadata", '{\"cksum\":\"'+cksum+'\"}', old_log_compressed, "sj://{}".format(self.log_drive)])
         shutil.rmtree(log_folder_path)
 
-        sys.exit(1)
-
     def new_log_folder(self):
         # Make data structure checkpoint before switching log folder
         self.make_checkpoint("end_chk.pkl")
@@ -124,7 +122,7 @@ class Logger:
         # Compress old log folder and delete logs
         self.save_logs(old_log_folder)
 
-        self.loop.call_later(1 * 60, self.new_log_folder)
+        self.loop.call_later(15 * 60, self.new_log_folder)
 
     def make_checkpoint(self, fn):
         save_data = {}
