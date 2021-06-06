@@ -44,7 +44,7 @@ class Logger:
     def open(self):
         if not self.opened:
             self.loop = asyncio.get_running_loop()
-            self.loop.call_later(1 * 60, self.new_log_folder)
+            self.loop.call_later(15, self.new_log_folder)
 
             self.opened = True
 
@@ -95,8 +95,10 @@ class Logger:
             cksum = hashlib.sha256(f.read()).hexdigest()
     
         # Backup logs to Storj and delete uncompressed logs
-        subp.run(["uplink", "cp", "--metadata", '{\"cksum\":\"'+cksum+'\"}', old_log_compressed, "sj://{}".format(log_folder_path)])
+        subp.run(["uplink", "cp", "--metadata", '{\"cksum\":\"'+cksum+'\"}', old_log_compressed, "sj://{}".format(self.log_drive)])
         shutil.rmtree(log_folder_path)
+
+        sys.exit(1)
 
     def new_log_folder(self):
         # Make data structure checkpoint before switching log folder
