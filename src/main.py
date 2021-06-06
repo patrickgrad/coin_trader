@@ -5,12 +5,9 @@ from logger import Logger
 import threading
 
 import asyncio
-import time 
-import pickle as pkl
 import sys
 import pathlib
 import pandas as pd
-import warnings
 
 async def main(logger, exchange):
     loop = asyncio.get_running_loop()

@@ -85,6 +85,18 @@ class Logger:
         print(line[:-1])
         self.info_fp.write(line)
 
+    def save_logs(self, log_folder_path):
+        # Compress old log folder and delete logs
+        old_log_compressed = "{}.tar.gz".format(log_folder_path)
+        subp.run(["tar", "cvzf", old_log_compressed, log_folder_path])
+
+        # Calculate checksum for archived logs
+        with open(old_log_compressed, "rb") as f:
+            cksum = hashlib.sha256(f.read()).hexdigest()
+    
+        # Backup logs to Storj and delete uncompressed logs
+        subp.run(["uplink", "cp", "--metadata", '{\"cksum\":\"'+cksum+'\"}', old_log_compressed, "sj://{}".format(self.log_drive)])
+        shutil.rmtree(log_folder_path)
 
     def new_log_folder(self):
         # Make data structure checkpoint before switching log folder
@@ -108,15 +120,7 @@ class Logger:
         self.make_checkpoint("start_chk.pkl")
 
         # Compress old log folder and delete logs
-        old_log_compressed = "{}.tar.gz".format(old_log_folder)
-        subp.run(["tar", "cvzf", old_log_compressed, old_log_folder])
-
-        with open(old_log_compressed, "rb") as f:
-            cksum = hashlib.sha256(f.read()).hexdigest()
-        
-        subp.run(["uplink", "cp", "--metadata", '{\"cksum\":\"'+cksum+'\"}', old_log_compressed, "sj://{}".format(self.log_drive)])
-        os.remove(old_log_compressed)
-        shutil.rmtree(old_log_folder)
+        self.save_logs(old_log_folder)
 
         self.loop.call_later(15 * 60, self.new_log_folder)
 
@@ -184,11 +188,21 @@ class Logger:
         # except:
         #     pass
 
+
+    # If we get here, we have an unrecoverable exception
+    # and the only solution is to exit and restart
     def exception_handler(self, loop, context):
+        # Try to close references to objects as nicely as possible
         self.close()
         self.exchange.close()
+
+        # Upload last log folder we were just working on
+        self.save_logs(self.log_folder)
         
+        # Print exception information
         self.log_error("Main", "Exception handler called in asyncio")
         self.log_error("Main", context["message"])
         self.log_error("Main", context["exception"])
 
+        # Restart process
+        sys.exit(1)
