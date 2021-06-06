@@ -36,7 +36,7 @@ class Logger:
         try:
             return os.environ[name]
         except KeyError:
-            self.log_warn('"{}" does not exist!'.format(name))
+            self.log_warn("Logger", '"{}" does not exist!'.format(name))
             val = input("{}:".format(name))
             return val
 
@@ -95,7 +95,7 @@ class Logger:
             cksum = hashlib.sha256(f.read()).hexdigest()
     
         # Backup logs to Storj and delete uncompressed logs
-        subp.run(["uplink", "cp", "--metadata", '{\"cksum\":\"'+cksum+'\"}', old_log_compressed, "sj://{}".format(self.log_drive)])
+        subp.run(["uplink", "cp", "--metadata", '{\"cksum\":\"'+cksum+'\"}', old_log_compressed, "sj://{}".format(log_folder_path)])
         shutil.rmtree(log_folder_path)
 
     def new_log_folder(self):
@@ -122,7 +122,7 @@ class Logger:
         # Compress old log folder and delete logs
         self.save_logs(old_log_folder)
 
-        self.loop.call_later(15 * 60, self.new_log_folder)
+        self.loop.call_later(1 * 60, self.new_log_folder)
 
     def make_checkpoint(self, fn):
         save_data = {}
