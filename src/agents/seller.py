@@ -1,12 +1,9 @@
-import time
-from agents.trading_agent import TradingAgent
-from order import Order
-from logger import Logger
+from src.agents.trading_agent import TradingAgent
+from src.order import Order
 
 class Seller(TradingAgent):
     def __init__(self, config):
         super().__init__(config)
-        self.our_ask = -1
 
     def log_error(self, msg):
         self.logger.log_error("Seller,{}".format(self.product_id), msg)
@@ -26,26 +23,24 @@ class Seller(TradingAgent):
     def replace_limit_order(self, price, size):
         self.exchange.replace_limit_order(prev_order=self.order, product_id=self.product_id, side="sell", price=price, size=size, post_only=True, on_order_placed=self.on_order_placed_limit)
 
-    def calculate_price(self, msg, mid_price):
-        ask = max(mid_price * (1 + (self.alpha / 100)), float(msg["best_ask"]) - self.quote_increment)     # make sure our calculated price isn't more than 1 cent better than the best price being offered currently (fail-safe)
+    def calculate_price(self, msg, tick_price, tick_price_changes):
+        # Calculate our custom alpha offset that we want to buy at
+        alpha = max(tick_price_changes*self.dynamic_thresh_multiplier, self.base_pct_chng_mean*self.base_thresh_multiplier)
+
+        # Make sure our calculated price isn't more than 1 step better than the best price being offered currently (fail-safe)
+        ask = max(tick_price * (1 + alpha), float(msg["best_ask"]) - self.quote_increment)
+        
         return round(ask, self.quote_increment)        
 
     def calculate_size(self, price):
-        base = self.exchange.balance[self.base_currency]
+        # Use portfolio ratio's worth of our target currency to sell
         target = self.exchange.balance[self.target_currency]
-
-        ratio = (target * price) / (base + (target * price))
-        if ratio <= 0.5:
-            calc_size = (0.005 + ratio * (0.0075 / 0.5)) * target
-        else:
-            calc_size = (0.085 * ratio - 0.035) * target
-
+        calc_size = self.portfolio_ratio * target
         size = max(min(calc_size, self.exchange.available[self.target_currency]), self.base_min_size)
         return round(size, self.base_increment)
 
     # Validate that the order we placed had no errors, or respond to the error
     def on_order_placed_limit(self, resp):
-        self.log_info("ON ORDER PLACED LIMIT")
         try:
             # Save order id and update balances of wallet
             self.order = Order(price=float(resp["price"]), order_id=resp["id"], order_size=float(resp["size"]), outstanding_order_size=float(resp["size"])-float(resp["filled_size"]))
@@ -64,7 +59,8 @@ class Seller(TradingAgent):
                 self.log_warn("order failed because of post only mode")
             # We absolutly ran out of coin, need to buy some BTC and back off alpha 
             elif resp["message"] == "Insufficient funds":
-                self.exchange.place_market_order(product_id=self.product_id, side="buy", size=self.base_min_size*3, on_order_placed=self.on_order_placed_market)
+                # self.exchange.place_market_order(product_id=self.product_id, side="buy", size=self.base_min_size*3, on_order_placed=self.on_order_placed_market)
+                self.log_warn("Seller, insufficient funds")
             elif resp["message"] == "Order rejected":
                 self.log_warn("Order rejected, try again")
             elif resp["message"] == "ServiceUnavailable":

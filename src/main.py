@@ -1,18 +1,13 @@
-from exchange.cbpro.cbpro_exchange import CBProExchange
-from exchange.backtest.backtest_exchange import BacktestExchange
-from agents.buyer import Buyer
-from agents.seller import Seller
-from logger import Logger
-import threading
 
+from src.exchange.cbpro.cbpro_exchange import CBProExchange
+from src.exchange.backtest.backtest_exchange import BacktestExchange
+from src.logger import Logger
+
+import threading
 import asyncio
-import time 
-import pickle as pkl
 import sys
 import pathlib
 import pandas as pd
-import warnings
-import argparse
 
 async def main(logger, exchange):
     loop = asyncio.get_running_loop()

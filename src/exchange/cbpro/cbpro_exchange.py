@@ -1,10 +1,10 @@
-import cbpro
 import os
+import cbpro
 import asyncio
-from agents.buyer import Buyer
-from agents.seller import Seller
-from exchange.leaky_bucket import LeakyBucket
-from exchange.cbpro.cbpro_websocket import TickerClient
+from src.agents.buyer import Buyer
+from src.agents.seller import Seller
+from src.exchange.leaky_bucket import LeakyBucket
+from src.exchange.cbpro.cbpro_websocket import TickerClient
 
 class CBProExchange:
     def __init__(self, logger, config):
@@ -23,8 +23,8 @@ class CBProExchange:
         self.product_ids = []
         self.configs = {}
         for row in config.to_dict(orient="records"):
-            self.product_ids.append(row["Product"])
-            self.configs[row["Product"]] = row
+            self.product_ids.append(row["PRODUCT"])
+            self.configs[row["PRODUCT"]] = row
         self.currency_ids = self.products_to_currencies(self.product_ids)
 
         self.available = {}
@@ -38,7 +38,7 @@ class CBProExchange:
         self.prodid_to_agents = {}
         for prod_id in self.product_ids:
             # Only add trading agents for products we actually want to trade, we can also just gather data
-            if self.configs[prod_id]["Trade"]:
+            if self.configs[prod_id]["TRADE"]:
                 b = Buyer(self.configs[prod_id])
                 s = Seller(self.configs[prod_id])
                 b.exchange = self
