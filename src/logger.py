@@ -96,7 +96,7 @@ class Logger:
     
         # Backup logs to Storj and delete uncompressed logs
         subp.run(["uplink", "cp", "--metadata", '{\"cksum\":\"'+cksum+'\"}', old_log_compressed, "sj://{}".format(self.log_drive)])
-        shutil.rmtree(log_folder_path)
+        # shutil.rmtree(log_folder_path) # don't delete the logs
 
     def new_log_folder(self):
         # Make data structure checkpoint before switching log folder
