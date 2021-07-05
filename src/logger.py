@@ -94,9 +94,9 @@ class Logger:
         with open(old_log_compressed, "rb") as f:
             cksum = hashlib.sha256(f.read()).hexdigest()
     
-        # Backup logs to Storj
+        # Backup logs to Storj and delete the log folder
         subp.run(["uplink", "cp", "--metadata", '{\"cksum\":\"'+cksum+'\"}', old_log_compressed, "sj://{}".format(self.log_drive)])
-        # shutil.rmtree(log_folder_path) # don't delete the logs
+        shutil.rmtree(log_folder_path)
 
     def new_log_folder(self):
         # Make data structure checkpoint before switching log folder
