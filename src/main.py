@@ -3,6 +3,7 @@ from src.exchange.cbpro.cbpro_exchange import CBProExchange
 from src.exchange.backtest.backtest_exchange import BacktestExchange
 from src.logger import Logger
 
+import argparse
 import threading
 import asyncio
 import sys
@@ -18,8 +19,9 @@ async def main(logger, exchange):
 
     all_threads_alive = True
     all_threads = threading.enumerate()
+    print(len(all_threads))
     while loop.is_running() and all_threads_alive:
-        print("Active tasks count: ", len([task for task in asyncio.all_tasks() if not task.done()]))
+        # print("Active tasks count: ", len([task for task in asyncio.all_tasks() if not task.done()]))
         all_threads_alive = True
         for thread in all_threads: 
             if not thread.is_alive():
