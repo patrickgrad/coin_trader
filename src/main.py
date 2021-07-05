@@ -1,7 +1,5 @@
-from exchange.cbpro_exchange import CBProExchange
-from agents.buyer import Buyer
-from agents.seller import Seller
-from logger import Logger
+from src.exchange.cbpro_exchange import CBProExchange
+from src.logger import Logger
 import threading
 
 import asyncio

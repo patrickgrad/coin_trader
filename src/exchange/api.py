@@ -1,9 +1,8 @@
 import collections as col
-import dateutil.parser
 import numpy as np
 import cbpro
 
-TICK_LOOKBACK_TIME = (15 * 1000)
+TICK_LOOKBACK_SAMPLES = 6
 
 # WARNING : many callbackes in this class are called from the thread in the
 #           WebsocketClient class, not the main thread
@@ -34,9 +33,6 @@ class TickerClient(cbpro.WebsocketClient):
 
     # Called from WebsocketClient thread
     def on_message(self, msg):
-        # Only way to do this without changing the WebsocketClient
-        self.thread.name = "TickerClient"
-
         if msg["type"] == "ticker":
             product_id = msg["product_id"]
             ts = msg["side"]
@@ -50,27 +46,43 @@ class TickerClient(cbpro.WebsocketClient):
             msg["maker_side"] = ms
 
             # Update list of samples and get rolling average volume and price
-            ts = int(dateutil.parser.parse(msg["time"]).timestamp() * 1000)
-            self.samples[product_id].append([ ts, float(msg["price"]) ]) # tuple of time, volume, price
+            self.samples[product_id].append(float(msg["price"]))
 
-            while len(self.samples[product_id]) > 0 and (ts - self.samples[product_id][0][0]) > TICK_LOOKBACK_TIME:
+            if len(self.samples[product_id]) > TICK_LOOKBACK_SAMPLES:
                 self.samples[product_id].popleft()
+            elif len(self.samples[product_id]) == 1:
+                return
 
-            avg_price = 0
-            for e in self.samples[product_id]:
-                avg_price += e[1]
-            avg_price /= len(self.samples[product_id])
+            tick_price_changes = 0
+            for i,p in enumerate(self.samples[product_id]):
+                if i == 0:
+                    prev_p = p
+                else:
+                    tick_price_changes += (p-prev_p)/prev_p
+                    prev_p = p
+            tick_price_changes /= len(self.samples[product_id])-1
 
-            self.exchange.log_info("tick product_id({}) avg_price({}) price({}) taker_side({}) size({}) bid({}) ask({})".format(product_id, avg_price, msg["price"], msg["side"], msg["last_size"], msg["best_bid"], msg["best_ask"]))
+            self.exchange.log_info("tick product_id({}) tick_price_changes({}) price({}) taker_side({}) size({}) bid({}) ask({})".format(product_id, tick_price_changes, msg["price"], msg["side"], msg["last_size"], msg["best_bid"], msg["best_ask"]))
 
             # Only need to do this part if we have a trading agent associated with this product
             if product_id in self.exchange.prodid_to_agents:
                 # Look at agents for this product id only and kick off on tick tasks
                 for agent in self.exchange.prodid_to_agents[product_id]:
                     # Want to launch this in the main thread, so need to use threadsafe version of call soon
-                    self.loop.call_soon_threadsafe(agent.on_tick, msg, avg_price)
+                    self.loop.call_soon_threadsafe(agent.on_tick, msg, float(msg["price"]), tick_price_changes)
+
+        elif msg["type"] == "match":
+            try:
+                self.exchange.maker_fee_rate = float(msg["maker_fee_rate"])
+                self.on_fill(msg)
+            except KeyError:
+                self.exchange.log_warn("We were not the maker (GUI manual order or rebalance order?)")
 
         elif msg["type"] == "status":
+            # Only way to do this without changing the WebsocketClient, do it in a path not triggered too often
+            self.thread.name = "TickerClient"
+
+            # Grab the product meta-data for our trading agents
             products = msg["products"]
             for product in products:
                 if product["id"] in self.exchange.prodid_to_agents:
@@ -79,12 +91,7 @@ class TickerClient(cbpro.WebsocketClient):
                         agent.quote_increment = abs(int(np.log10(float(product["quote_increment"]))))
                         agent.base_increment = abs(int(np.log10(float(product["base_increment"]))))
 
-        elif msg["type"] == "match":
-            try:
-                self.exchange.maker_fee_rate = float(msg["maker_fee_rate"])
-                self.on_fill(msg)
-            except KeyError:
-                self.exchange.log_warn("We were not the maker (GUI manual order or rebalance order?)")
+        
 
     # Called from WebsocketClient thread (actually called from on_message)
     def on_fill(self, msg):
