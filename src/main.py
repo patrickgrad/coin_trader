@@ -9,6 +9,7 @@ import asyncio
 import sys
 import pathlib
 import pandas as pd
+import traceback
 
 async def main(logger, exchange):
     loop = asyncio.get_running_loop()
@@ -20,7 +21,7 @@ async def main(logger, exchange):
     all_threads_alive = True
     all_threads = threading.enumerate()
     while loop.is_running() and all_threads_alive:
-        # print("Active tasks count: ", len([task for task in asyncio.all_tasks() if not task.done()]))
+        print("Active tasks count: ", len([task for task in asyncio.all_tasks() if not task.done()]))
         all_threads_alive = True
         for thread in all_threads: 
             if not thread.is_alive():
@@ -58,6 +59,11 @@ if __name__ == "__main__":
     # This will happen when any exception other than KeyboardInterrupt
     # is raised, which means we actually crashed
     except Exception:
+        exc_type, exc_value, exc_traceback = sys.exc_info()
+        print(exc_type)
+        print(exc_value)
+        traceback.print_tb(exc_traceback)
+
         exchange.close()
         logger.log_error("Main", "Crashed!")
         logger.close()

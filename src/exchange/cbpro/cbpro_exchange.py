@@ -1,6 +1,10 @@
 import os
 import cbpro
 import asyncio
+import sys
+import traceback
+from datetime import datetime
+from pathlib import Path
 from src.agents.buyer import Buyer
 from src.agents.seller import Seller
 from src.exchange.leaky_bucket import LeakyBucket
@@ -48,6 +52,30 @@ class CBProExchange:
                 self.agents.append(b)
                 self.agents.append(s)
                 self.prodid_to_agents[prod_id] = [b, s]
+
+    def exception_handler(func):
+        def ret(self, *args, **kwargs):
+            try:
+                func(self, *args, **kwargs)
+            except:
+                # Gather all the info we want to log
+                exc_type, exc_value, exc_traceback = sys.exc_info()
+                exception_dump_file = Path(self.logger.log_folder)/"exception_{}.txt".format(datetime.now().strftime("%Y%m%d_%H%M%S"))
+                out = "Exception Type: {}\n".format(exc_type)
+                out += "Exception Value: {}\n".format(exc_value)
+
+                # Print the exception info
+                print(out)
+                traceback.print_tb(exc_traceback)
+
+                # Save exception info to a file
+                with open(exception_dump_file, "w") as f:
+                    f.write(out)
+                    traceback.print_tb(exc_traceback, file=f)
+
+                # Make sure that we release the leaky bucket in case the exception is thrown after we have acquired it
+                self.lb.release()
+        return ret
 
     # Delay loop based initialization until we are in asyncio context
     def open(self):
@@ -108,12 +136,14 @@ class CBProExchange:
             val = input("{}:".format(name))
             return val
 
+    @exception_handler
     def cancel_order(self, order_id):
         # Use leaky bucket regulator when making REST call
         self.lb.acquire()
         self.rest_client.cancel_order(order_id)
         self.lb.release()
         
+    @exception_handler
     def place_market_order(self, on_order_placed, **kwargs):
         # Use leaky bucket regulator when making REST call
         self.lb.acquire()
@@ -121,6 +151,7 @@ class CBProExchange:
         self.lb.release()
         on_order_placed(resp)
         
+    @exception_handler
     def place_limit_order(self, on_order_placed, **kwargs):
         # Use leaky bucket regulator when making REST call
         self.lb.acquire()
@@ -128,6 +159,7 @@ class CBProExchange:
         self.lb.release()
         on_order_placed(resp)
         
+    @exception_handler
     def replace_limit_order(self, prev_order, on_order_placed, **kwargs):
         self.lb.acquire(2)
         resp = self.rest_client.place_limit_order(**kwargs)
@@ -136,7 +168,11 @@ class CBProExchange:
         on_order_placed(resp)
 
     # Every so often we need to get the balance of our funds
+    @exception_handler
     def get_accounts(self):
+        # Schedule the next call to this function before we do anything else in case we hit an exception
+        self.loop.call_later(5.0, self.get_accounts)
+
         # Use leaky bucket regulator when making REST call
         self.lb.acquire()
         resp = self.rest_client.get_accounts()
@@ -150,13 +186,14 @@ class CBProExchange:
                 self.balance[acct["currency"]] = float(acct["balance"])
 
                 self.log_info("{} available({}) hold({}) balance({})".format(acct["currency"], self.available[acct["currency"]], self.hold[acct["currency"]], self.balance[acct["currency"]]))
-
-        # Update the wallet from scratch every few seconds
-        self.loop.call_later(5.0, self.get_accounts)
         
     # Periodically list our open order to see if we have 0 or >1 orders open and act accordingly
+    @exception_handler
     def order_watchdog(self):
-        self.lb.acquire()
+        # Schedule the next call to this function before we do anything else in case we hit an exception
+        self.loop.call_later(15.0, self.order_watchdog)
+
+        self.lb.acquire(2)
         orders = list(self.rest_client.get_orders())
         self.lb.release()
 
@@ -168,5 +205,3 @@ class CBProExchange:
                 agent.on_order_watchdog( [ e for e in buy_orders if e["product_id"] == agent.product_id] )
             else:
                 agent.on_order_watchdog( [ e for e in sell_orders if e["product_id"] == agent.product_id] )
-
-        self.loop.call_later(15.0, self.order_watchdog)

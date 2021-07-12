@@ -8,6 +8,7 @@ class LeakyBucket:
         self.N = N
         self.interval = interval
         self.tokens = 0
+        self.acquired = False
 
         self.closed = False
 
@@ -38,9 +39,12 @@ class LeakyBucket:
         while self.tokens < tokens_to_consume:
             self.cv.wait() # releases lock, waits until notify is called, then re-acquires the lock before returning
         self.tokens -= tokens_to_consume
+        self.acquired = True
 
     def release(self):
-        self.cv.release()
+        if self.acquired:
+            self.acquired = False
+            self.cv.release()
 
     # Stop the thread from running 
     def close(self):
