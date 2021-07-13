@@ -167,7 +167,7 @@ class CBProExchange:
         self.lb.release()
         on_order_placed(resp)
 
-    # Every so often we need to get the balance of our funds
+    # Every so often we need to get the balance of our funds just to make sure our local representation matches what the exchange thinks we have
     @exception_handler
     def get_accounts(self):
         # Schedule the next call to this function before we do anything else in case we hit an exception
